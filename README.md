@@ -1,20 +1,81 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# InsightFlow - UX Analytics
 
-# Run and deploy your AI Studio app
+User feedback analysis platform with visualization and management features.
 
-This contains everything you need to run your app locally.
+## Project Structure
 
-View your app in AI Studio: https://ai.studio/apps/drive/1GCpb8xhKeR_UBvixUUojdoNHCOncAJ3a
+```
+feedback/
+├── server/                    # Node.js API server
+│   ├── src/
+│   │   ├── index.ts           # Express server entry
+│   │   ├── types.ts           # Type definitions
+│   │   ├── data/mockData.ts   # Mock data
+│   │   └── routes/feedback.ts # API routes
+│   ├── package.json
+│   └── tsconfig.json
+├── components/                # React components
+├── services/
+│   ├── api.ts                 # API service
+│   └── geminiService.ts       # Gemini AI service
+├── App.tsx                    # App entry
+├── types.ts                   # Frontend types
+└── vite.config.ts             # Vite config
+```
 
-## Run Locally
+## Quick Start
 
-**Prerequisites:**  Node.js
+### Install Dependencies
 
+```bash
+npm run install:all
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Start Development Server
+
+```bash
+# Start both frontend and backend
+npm run dev:all
+```
+
+Or start separately:
+
+```bash
+# Start Node server (port 3001)
+npm run dev:server
+
+# Start frontend (port 3000)
+npm run dev
+```
+
+### Access
+
+- Frontend: http://localhost:3000
+- API: http://localhost:3001/api
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/feedback` | Get all feedback |
+| GET | `/api/feedback/:id` | Get single feedback |
+| POST | `/api/feedback` | Create feedback |
+| PUT | `/api/feedback/:id` | Update feedback |
+| DELETE | `/api/feedback/:id` | Delete feedback |
+| GET | `/api/feedback/team/members` | Get team members |
+| GET | `/api/health` | Health check |
+
+## Tech Stack
+
+**Frontend:**
+- React 19
+- TypeScript
+- Vite
+- Recharts
+- Tailwind CSS
+- Lucide Icons
+
+**Backend:**
+- Node.js
+- Express
+- TypeScript

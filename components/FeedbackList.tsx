@@ -1,22 +1,47 @@
 import React, { useState } from 'react';
 import { FeedbackItem, Category, Sentiment } from '../types';
-import { Search, Filter, Sparkles, CheckCircle2, Clock, AlertCircle, RefreshCw, X, Check, User, UserPlus } from 'lucide-react';
+import { Search, Filter, Sparkles, CheckCircle2, Clock, AlertCircle, RefreshCw, X, Check, User, UserPlus, Calendar } from 'lucide-react';
 import { analyzeFeedbackWithGemini } from '../services/geminiService';
 import { TEAM_MEMBERS } from '../constants';
 
 interface FeedbackListProps {
   feedback: FeedbackItem[];
   setFeedback: React.Dispatch<React.SetStateAction<FeedbackItem[]>>;
+  onDateRangeChange?: (from: string, to: string) => void;
+  isLoading?: boolean;
+  currentDateRange?: { from: string; to: string };
 }
 
-export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedback }) => {
+type ContentTypeFilter = 'All' | 'community' | 'product';
+
+// Get default date range (last 7 days)
+const getDefaultDateRange = () => {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 7);
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0],
+  };
+};
+
+export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedback, onDateRangeChange, isLoading, currentDateRange }) => {
   const [filterCategory, setFilterCategory] = useState<Category | 'All'>('All');
+  const [filterContentType, setFilterContentType] = useState<ContentTypeFilter>('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [dateFrom, setDateFrom] = useState(currentDateRange?.from || getDefaultDateRange().from);
+  const [dateTo, setDateTo] = useState(currentDateRange?.to || getDefaultDateRange().to);
 
+  const handleDateRangeApply = () => {
+    if (onDateRangeChange && dateFrom && dateTo) {
+      onDateRangeChange(dateFrom, dateTo);
+    }
+  };
+  
   const handleAnalyze = async (item: FeedbackItem) => {
     setAnalyzingId(item.id);
     try {
@@ -88,13 +113,17 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
 
   const filteredData = feedback.filter(item => {
     const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
-    
-    const term = searchTerm.toLowerCase().trim();
-    if (!term) return matchesCategory;
 
-    const matchesSearch = item.content.toLowerCase().includes(term) || 
+    const matchesContentType = filterContentType === 'All' ||
+      (filterContentType === 'community' && item.contentType === 1) ||
+      (filterContentType === 'product' && item.contentType === 0);
+
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return matchesCategory && matchesContentType;
+
+    const matchesSearch = item.content.toLowerCase().includes(term) ||
                           item.userName.toLowerCase().includes(term);
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesContentType && matchesSearch;
   });
 
   const toggleSelection = (id: string) => {
@@ -152,17 +181,68 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
       }
   };
 
+  const getContentTypeLabel = (contentType?: number) => {
+    if (contentType === 1) {
+      return { label: '社区审核', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+    }
+    if (contentType === 0) {
+      return { label: '产品功能', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' };
+    }
+    return null;
+  };
+
+  const getTypeLabel = (type?: string) => {
+    if (!type) return null;
+    const typeMap: Record<string, string> = {
+      'pretend_couple': '假装情侣',
+      'user': '用户主页',
+      'moment': '日志',
+      'photo_wall': '照片墙',
+      'profile_intro': '个人简介',
+    };
+    return typeMap[type] || type;
+  };
+
   const allSelected = filteredData.length > 0 && selectedIds.size === filteredData.length;
 
   return (
     <div className="space-y-6 fade-enter-active">
       {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">User Feedback</h2>
-          <p className="text-slate-500 mt-1">Manage and analyze incoming user reviews.</p>
+      <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">User Feedback</h2>
+            <p className="text-slate-500 mt-1">Manage and analyze incoming user reviews.</p>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-2">
+            <Calendar size={18} className="text-slate-400" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+            />
+            <span className="text-slate-400">至</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+            />
+            <button
+              onClick={handleDateRangeApply}
+              disabled={isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoading ? <RefreshCw size={14} className="animate-spin" /> : null}
+              查询
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 items-center">
+
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-end">
           
           {/* Bulk Action Button */}
           {selectedIds.size > 0 && (
@@ -201,13 +281,24 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
           </div>
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <select 
+            <select
               className="pl-10 pr-8 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none bg-white w-full sm:w-48 cursor-pointer transition-all"
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value as Category | 'All')}
             >
               <option value="All">All Categories</option>
               {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <select
+              className="pl-4 pr-8 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none bg-white w-full sm:w-36 cursor-pointer transition-all"
+              value={filterContentType}
+              onChange={(e) => setFilterContentType(e.target.value as ContentTypeFilter)}
+            >
+              <option value="All">全部来源</option>
+              <option value="community">社区审核</option>
+              <option value="product">产品功能</option>
             </select>
           </div>
         </div>
@@ -262,17 +353,20 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2 flex-wrap">
                       {item.userName}
+                      {getContentTypeLabel(item.contentType) && (
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getContentTypeLabel(item.contentType)!.color}`}>
+                          {getContentTypeLabel(item.contentType)!.label}
+                        </span>
+                      )}
+                      {item.type && (
+                        <span className="px-2 py-0.5 rounded text-xs font-medium border bg-slate-100 text-slate-600 border-slate-200">
+                          {getTypeLabel(item.type)}
+                        </span>
+                      )}
                       <span className="text-xs font-normal text-slate-400">• {new Date(item.date).toLocaleDateString()}</span>
                     </h3>
-                    <div className="flex items-center gap-1 mt-1">
-                      {[...Array(5)].map((_, i) => (
-                        <svg key={i} className={`w-4 h-4 ${i < item.rating ? 'text-amber-400' : 'text-slate-200'}`} fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                      ))}
-                    </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -297,7 +391,7 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
                 <div className="mt-3 text-slate-600 leading-relaxed text-sm">
                     {displayContent}
                     {shouldTruncate && (
-                        <button 
+                        <button
                             onClick={() => toggleExpand(item.id)}
                             className="ml-1 text-indigo-600 hover:text-indigo-700 font-medium text-xs focus:outline-none hover:underline"
                         >
@@ -305,6 +399,30 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ feedback, setFeedbac
                         </button>
                     )}
                 </div>
+
+                {/* Image Preview */}
+                {item.imageUrl && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.imageUrl.split(',').filter(url => url.trim()).map((url, index) => (
+                      <a
+                        key={index}
+                        href={url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <img
+                          src={url.trim()}
+                          alt={`Feedback image ${index + 1}`}
+                          className="w-20 h-20 object-cover rounded-lg border border-slate-200 hover:border-indigo-300 transition-all hover:shadow-md"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
 
                 {item.aiSummary && (
                   <div className="mt-4 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 flex gap-3">

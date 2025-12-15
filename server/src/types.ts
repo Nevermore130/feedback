@@ -28,13 +28,13 @@ export interface FeedbackItem {
   userAvatar: string;
   date: string;
   content: string;
-  rating: number; // 1-5
+  rating: number;
   category: Category;
   sentiment: Sentiment;
   tags: string[];
   aiSummary?: string;
   status: 'New' | 'In Progress' | 'Resolved';
-  assignedTo?: string; // TeamMember ID
+  assignedTo?: string;
   // Extended fields from feishu API
   type?: string;
   imageUrl?: string;
@@ -43,17 +43,33 @@ export interface FeedbackItem {
   contentType?: number; // 1: 社区审核, 0: 产品功能
 }
 
-export interface AnalysisResult {
-  sentiment: Sentiment;
-  category: Category;
-  tags: string[];
-  summary: string;
+// Feishu API response types
+export interface FeishuFeedbackItem {
+  id: number;
+  user_id: number;
+  relaId: string;
+  reporteder: number;
+  nickName: string;
+  remark: string;
+  contact: string | null;
+  app_version: string | null;
+  contentType: number;
+  userType: string;
+  content: string;
+  type: string;
+  userImg: string;
+  cid: string;
+  timeId: string;
+  thumbnailUrl: string;
+  momentsText: string;
+  imageUrl: string;
+  status: number;
+  updateTime: string;
+  createTime: string;
+  extend1: string | null;
 }
 
-export interface DashboardStats {
-  totalFeedback: number;
-  averageRating: number;
-  npsScore: number;
-  sentimentDistribution: { name: string; value: number; color: string }[];
-  categoryDistribution: { name: string; value: number }[];
+export interface FeishuApiResponse {
+  code: number;
+  data: FeishuFeedbackItem[];
 }

@@ -2,13 +2,54 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { FeedbackList } from './components/FeedbackList';
-import { MOCK_FEEDBACK } from './constants';
+import { feedbackApi } from './services/api';
 import { FeedbackItem } from './types';
+
+// Get default date range (last 7 days)
+const getDefaultDateRange = () => {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 7);
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0],
+  };
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'feedback' | 'settings'>('dashboard');
-  const [feedbackData, setFeedbackData] = useState<FeedbackItem[]>(MOCK_FEEDBACK);
+  const [feedbackData, setFeedbackData] = useState<FeedbackItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [currentDateRange, setCurrentDateRange] = useState(getDefaultDateRange());
+
+  // Fetch feedback data from API
+  const fetchFeedback = async (from?: string, to?: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const dateRange = from && to ? { from, to } : undefined;
+      const data = await feedbackApi.getAll(dateRange);
+      setFeedbackData(data);
+      if (from && to) {
+        setCurrentDateRange({ from, to });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load feedback');
+      console.error('Failed to fetch feedback:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFeedback();
+  }, []);
+
+  const handleDateRangeChange = (from: string, to: string) => {
+    fetchFeedback(from, to);
+  };
 
   // Trigger initial fade in
   useEffect(() => {
@@ -16,11 +57,33 @@ const App: React.FC = () => {
   }, []);
 
   const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center h-96 bg-white rounded-2xl">
+          <div className="text-center text-slate-400">
+            <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-sm">Loading feedback data...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-red-300">
+          <div className="text-center text-red-500">
+            <p className="text-lg font-medium">Error</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard feedback={feedbackData} />;
       case 'feedback':
-        return <FeedbackList feedback={feedbackData} setFeedback={setFeedbackData} />;
+        return <FeedbackList feedback={feedbackData} setFeedback={setFeedbackData} onDateRangeChange={handleDateRangeChange} isLoading={isLoading} currentDateRange={currentDateRange} />;
       case 'settings':
         return (
           <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-slate-300">
