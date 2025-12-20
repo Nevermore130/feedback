@@ -12,16 +12,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.3",
-    "lucide-react": "^0.561.0",
     "@google/genai": "^1.33.0",
-    "recharts": "^3.5.1",
-    "react-dom": "^19.2.3"
+    "@tanstack/react-query": "^5.90.12",
+    "lucide-react": "^0.561.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-window": "^2.2.3",
+    "react-window-infinite-loader": "^2.0.0",
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.0",

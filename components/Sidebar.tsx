@@ -1,5 +1,6 @@
 import React from 'react';
 import { LayoutDashboard, MessageSquareText, Settings, PieChart, LogOut } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 interface SidebarProps {
   activeTab: 'dashboard' | 'feedback' | 'settings';
@@ -7,10 +8,12 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+  const { t } = useI18n();
+
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'feedback', label: 'User Feedback', icon: MessageSquareText },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'dashboard', label: t.dashboard, icon: LayoutDashboard },
+    { id: 'feedback', label: t.userFeedback, icon: MessageSquareText },
+    { id: 'settings', label: t.settings, icon: Settings },
   ] as const;
 
   return (

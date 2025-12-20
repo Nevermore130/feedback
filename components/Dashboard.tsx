@@ -1,10 +1,22 @@
-import React, { useMemo } from 'react';
-import { FeedbackItem, Sentiment, Category } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useState } from 'react';
+import { Sentiment } from '../types';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import { TrendingUp, Users, MessageCircle, Star } from 'lucide-react';
+import { useI18n } from '../i18n';
+import { useDashboardSummary } from '../hooks/useFeedback';
+import { DateRange } from '../services/api';
+
+// Colors for each issue type
+const ISSUE_TYPE_COLORS = {
+  ad: '#f59e0b',      // amber
+  review: '#8b5cf6',  // purple
+  chat: '#06b6d4',    // cyan
+  crash: '#ef4444',   // red
+  other: '#64748b',   // slate
+};
 
 interface DashboardProps {
-  feedback: FeedbackItem[];
+  dateRange?: DateRange;
 }
 
 const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#64748b'];
@@ -15,42 +27,84 @@ const SENTIMENT_COLORS = {
   [Sentiment.PENDING]: '#cbd5e1'
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
-  
-  const stats = useMemo(() => {
-    const total = feedback.length;
-    const avgRating = total > 0 ? (feedback.reduce((acc, curr) => acc + curr.rating, 0) / total).toFixed(1) : '0.0';
-    
-    // Calculate Sentiment Distribution
-    const sentimentCounts = feedback.reduce((acc, curr) => {
-      acc[curr.sentiment] = (acc[curr.sentiment] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+type TimeRange = 'week' | 'month';
 
-    const sentimentData = [
-      { name: 'Positive', value: sentimentCounts[Sentiment.POSITIVE] || 0, color: SENTIMENT_COLORS[Sentiment.POSITIVE] },
-      { name: 'Neutral', value: sentimentCounts[Sentiment.NEUTRAL] || 0, color: SENTIMENT_COLORS[Sentiment.NEUTRAL] },
-      { name: 'Negative', value: sentimentCounts[Sentiment.NEGATIVE] || 0, color: SENTIMENT_COLORS[Sentiment.NEGATIVE] },
-    ].filter(d => d.value > 0);
+export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
+  const { t } = useI18n();
+  const [issueTypeTimeRange, setIssueTypeTimeRange] = useState<TimeRange>('week');
 
-    // Calculate Category Distribution
-    const categoryCounts = feedback.reduce((acc, curr) => {
-      acc[curr.category] = (acc[curr.category] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  // Use React Query to fetch dashboard summary
+  const { data: summary, isLoading, error } = useDashboardSummary(dateRange);
 
-    const categoryData = Object.keys(categoryCounts).map(key => ({
-      name: key,
-      value: categoryCounts[key]
-    }));
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96 bg-white rounded-2xl">
+        <div className="text-center text-slate-400">
+          <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-sm">{t.loading}</p>
+        </div>
+      </div>
+    );
+  }
 
-    // Calculate NPS (Simplified: %Promoters(5) - %Detractors(1-3)) * 100
-    const promoters = feedback.filter(f => f.rating === 5).length;
-    const detractors = feedback.filter(f => f.rating <= 3).length;
-    const nps = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-red-300">
+        <div className="text-center text-red-500">
+          <p className="text-lg font-medium">{t.error}</p>
+          <p className="text-sm">{error instanceof Error ? error.message : 'Failed to load data'}</p>
+        </div>
+      </div>
+    );
+  }
 
-    return { total, avgRating, nps, sentimentData, categoryData };
-  }, [feedback]);
+  if (!summary) {
+    return null;
+  }
+
+  // Prepare data for charts
+  const sentimentData = [
+    { name: t.positive, value: summary.sentimentCounts[Sentiment.POSITIVE] || 0, color: SENTIMENT_COLORS[Sentiment.POSITIVE] },
+    { name: t.neutral, value: summary.sentimentCounts[Sentiment.NEUTRAL] || 0, color: SENTIMENT_COLORS[Sentiment.NEUTRAL] },
+    { name: t.negative, value: summary.sentimentCounts[Sentiment.NEGATIVE] || 0, color: SENTIMENT_COLORS[Sentiment.NEGATIVE] },
+  ].filter(d => d.value > 0);
+
+  const categoryData = Object.entries(summary.categoryCounts).map(([name, value]) => ({
+    name,
+    value
+  }));
+
+  // Format daily trend data
+  const dailyTrendData = summary.dailyTrendData.map(d => ({
+    date: d.date.slice(5), // MM-DD format
+    fullDate: d.date,
+    count: d.count,
+    isPeak: d.isPeak
+  }));
+
+  const peakDay = dailyTrendData.find(d => d.isPeak) || null;
+
+  // Format ad trend data
+  const adTrendData = summary.adTrendData.map(d => ({
+    date: d.date.slice(5), // MM-DD format
+    fullDate: d.date,
+    count: d.count
+  }));
+
+  // Format issue type trend data
+  const issueTypeWeekData = summary.issueTypeWeekData.map(d => ({
+    period: d.period.slice(5), // Remove year prefix
+    fullPeriod: d.period,
+    ...d
+  }));
+
+  const issueTypeMonthData = summary.issueTypeMonthData.map(d => ({
+    period: d.period.slice(5), // Remove year prefix
+    fullPeriod: d.period,
+    ...d
+  }));
 
   return (
     <div className="space-y-6 fade-enter-active">
@@ -58,8 +112,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
         {/* Metric Cards */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
           <div>
-            <p className="text-slate-500 text-sm font-medium">Total Feedback</p>
-            <h3 className="text-3xl font-bold text-slate-900 mt-1">{stats.total}</h3>
+            <p className="text-slate-500 text-sm font-medium">{t.totalFeedback}</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-1">{summary.totalFeedback}</h3>
           </div>
           <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
             <MessageCircle size={24} />
@@ -68,8 +122,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
           <div>
-            <p className="text-slate-500 text-sm font-medium">Avg. Rating</p>
-            <h3 className="text-3xl font-bold text-slate-900 mt-1">{stats.avgRating}</h3>
+            <p className="text-slate-500 text-sm font-medium">{t.avgRating}</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-1">{summary.avgRating}</h3>
           </div>
           <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
             <Star size={24} fill="currentColor" />
@@ -78,20 +132,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
           <div>
-            <p className="text-slate-500 text-sm font-medium">NPS Score</p>
-            <h3 className={`text-3xl font-bold mt-1 ${stats.nps >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {stats.nps > 0 ? '+' : ''}{stats.nps}
+            <p className="text-slate-500 text-sm font-medium">{t.npsScore}</p>
+            <h3 className={`text-3xl font-bold mt-1 ${summary.npsScore >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {summary.npsScore > 0 ? '+' : ''}{summary.npsScore}
             </h3>
           </div>
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${stats.nps >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${summary.npsScore >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
             <Users size={24} />
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
           <div>
-            <p className="text-slate-500 text-sm font-medium">Response Rate</p>
-            <h3 className="text-3xl font-bold text-slate-900 mt-1">94%</h3>
+            <p className="text-slate-500 text-sm font-medium">{t.recentFeedback}</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-1">{summary.recentFeedback.length}</h3>
           </div>
           <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
             <TrendingUp size={24} />
@@ -102,19 +156,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Charts */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Feedback by Category</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-6">{t.categoryBreakdown}</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <Tooltip 
+                <Tooltip
                   cursor={{ fill: '#f1f5f9' }}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {stats.categoryData.map((entry, index) => (
+                  {categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Bar>
@@ -124,12 +178,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Sentiment Analysis</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-6">{t.sentimentOverview}</h3>
           <div className="h-72 w-full flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={stats.sentimentData}
+                  data={sentimentData}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -137,7 +191,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
                   paddingAngle={5}
                   dataKey="value"
                 >
-                  {stats.sentimentData.map((entry, index) => (
+                  {sentimentData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
                   ))}
                 </Pie>
@@ -146,13 +200,207 @@ export const Dashboard: React.FC<DashboardProps> = ({ feedback }) => {
             </ResponsiveContainer>
           </div>
           <div className="flex justify-center gap-4 mt-[-20px]">
-            {stats.sentimentData.map((item) => (
+            {sentimentData.map((item) => (
               <div key={item.name} className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
                 <span className="text-sm text-slate-600 font-medium">{item.name}</span>
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Ad Tag Feedback Trend Chart */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <h3 className="text-lg font-bold text-slate-900 mb-6">{t.adTagTrend}</h3>
+        <div className="h-72 w-full">
+          {adTrendData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={adTrendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: '8px',
+                    border: 'none',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    backgroundColor: '#fff'
+                  }}
+                  formatter={(value: number) => [value, t.feedbackCount]}
+                  labelFormatter={(label) => label}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#f59e0b"
+                  strokeWidth={3}
+                  dot={{ fill: '#f59e0b', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400">
+              <p>{t.noFeedbackFound}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Daily Feedback Trend Chart */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-slate-900">{t.dailyFeedbackTrend}</h3>
+          {peakDay && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 rounded-lg border border-rose-100">
+              <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+              <span className="text-sm text-rose-700 font-medium">
+                {t.peakDay}: {peakDay.date} ({peakDay.count})
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="h-72 w-full">
+          {dailyTrendData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyTrendData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  cursor={{ fill: '#f1f5f9' }}
+                  contentStyle={{
+                    borderRadius: '8px',
+                    border: 'none',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    backgroundColor: '#fff'
+                  }}
+                  formatter={(value: number) => [value, t.feedbackCount]}
+                  labelFormatter={(label) => label}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} label={{ position: 'top', fill: '#64748b', fontSize: 12 }}>
+                  {dailyTrendData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.isPeak ? '#f43f5e' : '#6366f1'}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400">
+              <p>{t.noFeedbackFound}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Issue Type Feedback Trend Chart */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-slate-900">{t.issueTypeTrend}</h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIssueTypeTimeRange('week')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                issueTypeTimeRange === 'week'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {t.byWeek}
+            </button>
+            <button
+              onClick={() => setIssueTypeTimeRange('month')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                issueTypeTimeRange === 'month'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {t.byMonth}
+            </button>
+          </div>
+        </div>
+        <div className="h-80 w-full">
+          {(issueTypeTimeRange === 'week' ? issueTypeWeekData : issueTypeMonthData).length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={issueTypeTimeRange === 'week' ? issueTypeWeekData : issueTypeMonthData}
+                margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="period"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  cursor={{ fill: '#f1f5f9' }}
+                  contentStyle={{
+                    borderRadius: '8px',
+                    border: 'none',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    backgroundColor: '#fff'
+                  }}
+                />
+                <Legend
+                  wrapperStyle={{ paddingTop: '20px' }}
+                  formatter={(value) => {
+                    const labelMap: Record<string, string> = {
+                      ad: t.adIssue,
+                      review: t.reviewIssue,
+                      chat: t.chatIssue,
+                      crash: t.crashIssue,
+                      other: t.otherIssue,
+                    };
+                    return <span className="text-sm text-slate-600">{labelMap[value] || value}</span>;
+                  }}
+                />
+                <Bar dataKey="ad" name="ad" stackId="a" fill={ISSUE_TYPE_COLORS.ad} radius={[0, 0, 0, 0]} />
+                <Bar dataKey="review" name="review" stackId="a" fill={ISSUE_TYPE_COLORS.review} radius={[0, 0, 0, 0]} />
+                <Bar dataKey="chat" name="chat" stackId="a" fill={ISSUE_TYPE_COLORS.chat} radius={[0, 0, 0, 0]} />
+                <Bar dataKey="crash" name="crash" stackId="a" fill={ISSUE_TYPE_COLORS.crash} radius={[0, 0, 0, 0]} />
+                <Bar dataKey="other" name="other" stackId="a" fill={ISSUE_TYPE_COLORS.other} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400">
+              <p>{t.noFeedbackFound}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

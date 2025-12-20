@@ -58,6 +58,7 @@ export interface FeishuFeedbackItem {
   content: string;
   type: string;
   userImg: string;
+  avatar: string;
   cid: string;
   timeId: string;
   thumbnailUrl: string;

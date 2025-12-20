@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { FeedbackList } from './components/FeedbackList';
-import { feedbackApi } from './services/api';
-import { FeedbackItem } from './types';
+import { useI18n, Language } from './i18n';
+import { Globe } from 'lucide-react';
+
+// Create a client with optimized settings
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
+      retry: 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 // Get default date range (last 7 days)
 const getDefaultDateRange = () => {
@@ -16,39 +29,14 @@ const getDefaultDateRange = () => {
   };
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'feedback' | 'settings'>('dashboard');
-  const [feedbackData, setFeedbackData] = useState<FeedbackItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [currentDateRange, setCurrentDateRange] = useState(getDefaultDateRange());
-
-  // Fetch feedback data from API
-  const fetchFeedback = async (from?: string, to?: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const dateRange = from && to ? { from, to } : undefined;
-      const data = await feedbackApi.getAll(dateRange);
-      setFeedbackData(data);
-      if (from && to) {
-        setCurrentDateRange({ from, to });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load feedback');
-      console.error('Failed to fetch feedback:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchFeedback();
-  }, []);
+  const { language, setLanguage, t } = useI18n();
 
   const handleDateRangeChange = (from: string, to: string) => {
-    fetchFeedback(from, to);
+    setCurrentDateRange({ from, to });
   };
 
   // Trigger initial fade in
@@ -57,39 +45,17 @@ const App: React.FC = () => {
   }, []);
 
   const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center h-96 bg-white rounded-2xl">
-          <div className="text-center text-slate-400">
-            <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-sm">Loading feedback data...</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-red-300">
-          <div className="text-center text-red-500">
-            <p className="text-lg font-medium">Error</p>
-            <p className="text-sm">{error}</p>
-          </div>
-        </div>
-      );
-    }
-
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard feedback={feedbackData} />;
+        return <Dashboard dateRange={currentDateRange} />;
       case 'feedback':
-        return <FeedbackList feedback={feedbackData} setFeedback={setFeedbackData} onDateRangeChange={handleDateRangeChange} isLoading={isLoading} currentDateRange={currentDateRange} />;
+        return <FeedbackList onDateRangeChange={handleDateRangeChange} currentDateRange={currentDateRange} />;
       case 'settings':
         return (
           <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-slate-300">
             <div className="text-center text-slate-400">
-              <p className="text-lg font-medium">Settings Panel</p>
-              <p className="text-sm">Configuration options would go here.</p>
+              <p className="text-lg font-medium">{t.settingsPanel}</p>
+              <p className="text-sm">{t.configurationOptions}</p>
             </div>
           </div>
         );
@@ -108,17 +74,30 @@ const App: React.FC = () => {
         <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
-              {activeTab === 'dashboard' ? 'Overview' : activeTab === 'feedback' ? 'Feedback Analysis' : 'Settings'}
+              {activeTab === 'dashboard' ? t.overview : activeTab === 'feedback' ? t.feedbackAnalysis : t.settings}
             </h1>
             <p className="text-slate-500 text-sm mt-1">
-              Welcome back, Admin. Here's what's happening today.
+              {t.welcome}
             </p>
           </div>
-          
+
           <div className="flex items-center gap-4">
+            {/* Language Switcher */}
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-slate-200">
+              <Globe className="w-4 h-4 text-slate-500" />
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as Language)}
+                className="bg-transparent text-sm text-slate-700 cursor-pointer focus:outline-none"
+              >
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-900">Admin User</p>
-              <p className="text-xs text-slate-500">Product Manager</p>
+              <p className="text-sm font-semibold text-slate-900">{t.adminUser}</p>
+              <p className="text-xs text-slate-500">{t.productManager}</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-white shadow-md"></div>
           </div>
@@ -127,6 +106,15 @@ const App: React.FC = () => {
         {renderContent()}
       </main>
     </div>
+  );
+};
+
+// Wrapper component with QueryClientProvider
+const App: React.FC = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
   );
 };
 

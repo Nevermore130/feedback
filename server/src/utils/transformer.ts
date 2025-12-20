@@ -55,14 +55,13 @@ function extractTags(content: string, type: string | null | undefined): string[]
 }
 
 /**
- * Get first image URL from comma-separated list
+ * Get avatar URL, with fallback to default
  */
-function getFirstUserImage(userImg: string): string {
-  if (!userImg) {
+function getAvatarUrl(avatar: string): string {
+  if (!avatar) {
     return 'https://api.dicebear.com/7.x/avataaars/svg?seed=default';
   }
-  const images = userImg.split(',');
-  return images[0] || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default';
+  return avatar;
 }
 
 /**
@@ -73,7 +72,7 @@ export function transformFeishuToFeedback(item: FeishuFeedbackItem): FeedbackIte
     id: `f-${item.id}`,
     userId: item.user_id.toString(),
     userName: item.nickName || 'Anonymous',
-    userAvatar: getFirstUserImage(item.userImg),
+    userAvatar: getAvatarUrl(item.avatar),
     date: item.createTime,
     content: item.content || item.momentsText || '',
     rating: 3, // Default rating since feishu doesn't provide this
