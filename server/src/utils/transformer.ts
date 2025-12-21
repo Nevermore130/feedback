@@ -1,4 +1,5 @@
 import { FeishuFeedbackItem, FeedbackItem, Category, Sentiment } from '../types.js';
+import { analyzeInBatch, getDefaultAnalysis, BatchAnalysisItem } from '../services/geminiService.js';
 
 /**
  * Map feishu type to Category
@@ -65,7 +66,7 @@ function getAvatarUrl(avatar: string): string {
 }
 
 /**
- * Transform feishu feedback item to UI FeedbackItem
+ * Transform feishu feedback item to UI FeedbackItem (without AI analysis)
  */
 export function transformFeishuToFeedback(item: FeishuFeedbackItem): FeedbackItem {
   return {
@@ -77,7 +78,7 @@ export function transformFeishuToFeedback(item: FeishuFeedbackItem): FeedbackIte
     content: item.content || item.momentsText || '',
     rating: 3, // Default rating since feishu doesn't provide this
     category: mapCategory(item.type),
-    sentiment: Sentiment.PENDING, // Will be analyzed by AI later
+    sentiment: Sentiment.PENDING, // Will be analyzed by AI
     tags: extractTags(item.content || item.momentsText || '', item.type),
     status: mapStatus(item.status),
     type: item.type,
@@ -89,8 +90,71 @@ export function transformFeishuToFeedback(item: FeishuFeedbackItem): FeedbackIte
 }
 
 /**
- * Transform array of feishu items
+ * Transform array of feishu items (without AI analysis)
  */
 export function transformFeishuList(items: FeishuFeedbackItem[]): FeedbackItem[] {
   return items.map(transformFeishuToFeedback);
+}
+
+/**
+ * Transform array of feishu items with high-performance batch AI analysis
+ *
+ * Performance target: 1000 items in ~5 seconds
+ *
+ * Strategy:
+ * - Batch multiple items into single AI requests (30 items per request)
+ * - Execute multiple batches in parallel (10 concurrent)
+ * - Use content-based caching to skip duplicate analysis
+ */
+export async function transformFeishuListWithAI(
+  items: FeishuFeedbackItem[],
+  options: {
+    chunkSize?: number;
+    concurrency?: number;
+    onProgress?: (completed: number, total: number) => void;
+  } = {}
+): Promise<FeedbackItem[]> {
+  const startTime = Date.now();
+
+  // Step 1: Transform all items without AI
+  const feedbackItems = items.map(transformFeishuToFeedback);
+
+  // Step 2: Prepare batch analysis items
+  const batchItems: BatchAnalysisItem[] = feedbackItems
+    .filter(item => item.content.trim().length > 0)
+    .map(item => ({
+      id: item.id,
+      content: item.content,
+    }));
+
+  if (batchItems.length === 0) {
+    console.log(`[Transformer] No items to analyze`);
+    return feedbackItems;
+  }
+
+  console.log(`[Transformer] Starting batch analysis for ${batchItems.length} items...`);
+
+  // Step 3: Run batch analysis
+  const analysisResults = await analyzeInBatch(batchItems, {
+    chunkSize: options.chunkSize || 30,
+    concurrency: options.concurrency || 10,
+    onProgress: options.onProgress,
+  });
+
+  // Step 4: Apply analysis results to feedback items
+  for (const item of feedbackItems) {
+    const analysis = analysisResults.get(item.id);
+    if (analysis) {
+      item.sentiment = analysis.sentiment;
+      item.category = analysis.category;
+      item.tags = analysis.tags.length > 0 ? analysis.tags : item.tags;
+      item.aiSummary = analysis.summary;
+    }
+  }
+
+  const elapsed = Date.now() - startTime;
+  const successCount = analysisResults.size;
+  console.log(`[Transformer] Completed: ${successCount}/${batchItems.length} analyzed in ${elapsed}ms (${(elapsed / 1000).toFixed(2)}s)`);
+
+  return feedbackItems;
 }

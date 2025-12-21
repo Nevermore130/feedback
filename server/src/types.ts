@@ -73,4 +73,6 @@ export interface FeishuFeedbackItem {
 export interface FeishuApiResponse {
   code: number;
   data: FeishuFeedbackItem[];
+  total?: number; // Total count if provided by API
+  hasMore?: boolean;
 }
