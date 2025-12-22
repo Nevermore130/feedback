@@ -218,14 +218,61 @@ async function fetchFromFeishu(from: string, to: string, withAI: boolean = true)
 
       if (dbData.length > 0) {
         console.log(`[Supabase] Found ${dbData.length} items in database`);
-        // Check if AI analysis is needed
-        const needsAI = withAI && dbData.some(f => f.sentiment === Sentiment.PENDING);
+        // Check if AI analysis is needed for some items
+        const pendingItems = dbData.filter(f => f.sentiment === Sentiment.PENDING);
+        const needsAI = withAI && pendingItems.length > 0;
 
         if (!needsAI) {
+          // All items have AI analysis, use Supabase data directly
           feedbackCache.set(cacheKey, dbData, true);
           return dbData;
         }
-        console.log(`[Supabase] Some items need AI analysis, will process...`);
+
+        // Only analyze pending items, keep already analyzed items
+        console.log(`[Supabase] ${pendingItems.length}/${dbData.length} items need AI analysis...`);
+        const analyzedItems = dbData.filter(f => f.sentiment !== Sentiment.PENDING);
+
+        // Analyze only pending items
+        const pendingRawItems = pendingItems.map(item => ({
+          id: item.id,
+          content: item.content,
+        }));
+
+        const { analyzeInBatch } = await import('../services/geminiService.js');
+        const analysisResults = await analyzeInBatch(pendingRawItems, {
+          chunkSize: 50,
+          concurrency: 10,
+        });
+
+        // Merge analysis results into pending items
+        for (const item of pendingItems) {
+          const result = analysisResults.get(item.id);
+          if (result) {
+            item.sentiment = result.sentiment;
+            item.category = result.category;
+            item.tags = result.tags;
+            item.aiSummary = result.summary;
+          }
+        }
+
+        // Combine analyzed and newly analyzed items
+        const allItems = [...analyzedItems, ...pendingItems];
+        allItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        // Update Supabase with newly analyzed items
+        if (pendingItems.length > 0) {
+          supabase.upsertFeedback(pendingItems)
+            .then(({ success, failed }) => {
+              console.log(`[Supabase] Updated ${success} newly analyzed items, ${failed} failed`);
+            })
+            .catch(err => {
+              console.warn('[Supabase] Failed to update:', err);
+            });
+        }
+
+        feedbackCache.set(cacheKey, allItems, true);
+        console.log(`[Supabase+AI] Returned ${allItems.length} items (${pendingItems.length} newly analyzed)`);
+        return allItems;
       }
     } catch (error) {
       console.warn('[Supabase] Database query failed, falling back to API:', error);
@@ -711,91 +758,34 @@ router.get('/cache/stats', async (_req: Request, res: Response) => {
 });
 
 // ============================================
-// Feishu Share Routes
+// Feishu Share Routes (Webhook-based)
 // ============================================
 
-// GET /api/feedback/feishu/users/search - Search Feishu users
-router.get('/feishu/users/search', async (req: Request, res: Response) => {
-  try {
-    if (!feishu.isFeishuConfigured()) {
-      res.status(503).json({
-        success: false,
-        error: 'Feishu API is not configured. Please set FEISHU_APP_ID and FEISHU_APP_SECRET.',
-      });
-      return;
-    }
-
-    const { keyword } = req.query;
-    if (!keyword || typeof keyword !== 'string') {
-      res.status(400).json({
-        success: false,
-        error: 'Search keyword is required',
-      });
-      return;
-    }
-
-    const users = await feishu.searchUsers(keyword);
-    res.json({
-      success: true,
-      data: users,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to search users',
-    });
-  }
+// GET /api/feedback/feishu/status - Check Feishu webhook configuration
+router.get('/feishu/status', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: feishu.getWebhookStatus(),
+  });
 });
 
-// GET /api/feedback/feishu/users/recent - Get recent contacts
-router.get('/feishu/users/recent', async (_req: Request, res: Response) => {
-  try {
-    if (!feishu.isFeishuConfigured()) {
-      res.status(503).json({
-        success: false,
-        error: 'Feishu API is not configured',
-      });
-      return;
-    }
-
-    const users = await feishu.getRecentContacts();
-    res.json({
-      success: true,
-      data: users,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get recent contacts',
-    });
-  }
-});
-
-// POST /api/feedback/share - Share feedback to Feishu users
+// POST /api/feedback/share - Share feedback via Feishu webhook
 router.post('/share', async (req: Request, res: Response) => {
   try {
     if (!feishu.isFeishuConfigured()) {
       res.status(503).json({
         success: false,
-        error: 'Feishu API is not configured. Please set FEISHU_APP_ID and FEISHU_APP_SECRET.',
+        error: 'Feishu webhook is not configured. Please set FEISHU_WEBHOOK_URL environment variable.',
       });
       return;
     }
 
-    const { feedbackId, receiverIds, receiverIdType, shareMessage, from, to } = req.body;
+    const { feedbackId, shareMessage, from, to } = req.body;
 
     if (!feedbackId) {
       res.status(400).json({
         success: false,
         error: 'feedbackId is required',
-      });
-      return;
-    }
-
-    if (!receiverIds || !Array.isArray(receiverIds) || receiverIds.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: 'receiverIds must be a non-empty array',
       });
       return;
     }
@@ -816,21 +806,20 @@ router.post('/share', async (req: Request, res: Response) => {
       return;
     }
 
-    // Share to all receivers
-    const result = await feishu.shareFeedback(
-      feedback,
-      receiverIds,
-      receiverIdType || 'open_id',
-      shareMessage
-    );
+    // Send via webhook
+    const result = await feishu.sendViaWebhook(feedback, shareMessage);
+
+    if (!result.success) {
+      res.status(500).json({
+        success: false,
+        error: result.error || 'Failed to send message',
+      });
+      return;
+    }
 
     res.json({
       success: true,
-      data: {
-        sent: result.success,
-        failed: result.failed,
-        details: result.results,
-      },
+      data: { sent: true },
     });
   } catch (error) {
     res.status(500).json({
@@ -838,16 +827,6 @@ router.post('/share', async (req: Request, res: Response) => {
       error: error instanceof Error ? error.message : 'Failed to share feedback',
     });
   }
-});
-
-// GET /api/feedback/feishu/status - Check Feishu configuration status
-router.get('/feishu/status', (_req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      configured: feishu.isFeishuConfigured(),
-    },
-  });
 });
 
 export default router;

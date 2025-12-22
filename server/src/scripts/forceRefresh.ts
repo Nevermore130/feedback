@@ -9,11 +9,12 @@
 
 import { forceRefreshFeedback } from '../routes/feedback.js';
 
-// Get date range for last 7 days
-function getLastSevenDaysRange(): { from: string; to: string } {
+// Get date range for last 3 days (end date is tomorrow to ensure today's data is included)
+function getLastThreeDaysRange(): { from: string; to: string } {
   const to = new Date();
+  to.setDate(to.getDate() + 1); // Tomorrow
   const from = new Date();
-  from.setDate(from.getDate() - 7);
+  from.setDate(from.getDate() - 3);
 
   return {
     from: from.toISOString().split('T')[0],
@@ -22,13 +23,13 @@ function getLastSevenDaysRange(): { from: string; to: string } {
 }
 
 async function main(): Promise<void> {
-  const { from, to } = getLastSevenDaysRange();
+  const { from, to } = getLastThreeDaysRange();
 
   console.log(`\n========================================`);
   console.log(`Force Refresh Script`);
   console.log(`========================================`);
   console.log(`Start time: ${new Date().toISOString()}`);
-  console.log(`Date range: ${from} to ${to} (last 7 days)`);
+  console.log(`Date range: ${from} to ${to} (last 3 days)`);
   console.log(`========================================\n`);
 
   const startTime = Date.now();

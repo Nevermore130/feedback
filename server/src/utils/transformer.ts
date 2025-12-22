@@ -86,6 +86,7 @@ export function transformFeishuToFeedback(item: FeishuFeedbackItem): FeedbackIte
     momentsText: item.momentsText,
     userType: item.userType,
     contentType: item.contentType,
+    appVersion: item.app_version || undefined,
   };
 }
 

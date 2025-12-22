@@ -47,6 +47,7 @@ interface DbFeedback {
   moments_text: string | null;
   user_type: string | null;
   content_type: number | null;
+  app_version: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -84,6 +85,7 @@ function toDbFeedback(item: FeedbackItem): DbFeedback {
     moments_text: item.momentsText || null,
     user_type: item.userType || null,
     content_type: item.contentType ?? null,
+    app_version: item.appVersion || null,
   };
 }
 
@@ -107,6 +109,7 @@ function fromDbFeedback(db: DbFeedback): FeedbackItem {
     momentsText: db.moments_text || undefined,
     userType: db.user_type || undefined,
     contentType: db.content_type ?? undefined,
+    appVersion: db.app_version || undefined,
   };
 }
 

@@ -508,6 +508,10 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({ onDateRangeChange, c
                   <div>
                     <h3 className="font-semibold text-slate-900 flex items-center gap-2 flex-wrap">
                       {item.userName}
+                      <span className="text-xs font-normal text-slate-400">ID: {item.userId}</span>
+                      {item.appVersion && (
+                        <span className="text-xs font-normal text-slate-400">v{item.appVersion}</span>
+                      )}
                       {getContentTypeLabel(item.contentType) && (
                         <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getContentTypeLabel(item.contentType)!.color}`}>
                           {getContentTypeLabel(item.contentType)!.label}

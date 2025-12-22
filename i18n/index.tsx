@@ -113,6 +113,8 @@ interface Translations {
   shareFailed: string;
   noUsersSelected: string;
   feishuNotConfigured: string;
+  feishuWebhookHint: string;
+  webhookDestinationHint: string;
 }
 
 const translations: Record<Language, Translations> = {
@@ -226,7 +228,9 @@ const translations: Record<Language, Translations> = {
     shareSuccess: '分享成功',
     shareFailed: '分享失败',
     noUsersSelected: '请选择至少一个用户',
-    feishuNotConfigured: '飞书未配置',
+    feishuNotConfigured: '飞书 Webhook 未配置',
+    feishuWebhookHint: '请在服务端配置 FEISHU_WEBHOOK_URL 环境变量',
+    webhookDestinationHint: '消息将发送到配置的飞书群或用户',
   },
   en: {
     // Common
@@ -338,7 +342,9 @@ const translations: Record<Language, Translations> = {
     shareSuccess: 'Shared successfully',
     shareFailed: 'Failed to share',
     noUsersSelected: 'Please select at least one user',
-    feishuNotConfigured: 'Feishu not configured',
+    feishuNotConfigured: 'Feishu Webhook not configured',
+    feishuWebhookHint: 'Please configure FEISHU_WEBHOOK_URL environment variable on the server',
+    webhookDestinationHint: 'Message will be sent to the configured Feishu group or user',
   },
 };
 

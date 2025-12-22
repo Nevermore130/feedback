@@ -1,135 +1,34 @@
-import { FeedbackItem, Sentiment, Category } from '../types.js';
+import { FeedbackItem, Sentiment } from '../types.js';
 
 // ============================================
-// Feishu API Configuration
+// Feishu Webhook Configuration
 // ============================================
 
-const FEISHU_APP_ID = process.env.FEISHU_APP_ID || 'cli_a2fd12f92db9500d';
-const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || 'Exr1HPJW6SPLKqpYdqLs7cmg30rrIOkD';
-
-let tenantAccessToken: string | null = null;
-let tokenExpiresAt: number = 0;
+// Feishu Webhook URL - configure in environment or use default
+const FEISHU_WEBHOOK_URL = process.env.FEISHU_WEBHOOK_URL || '';
 
 // ============================================
-// Token Management
+// Webhook Status
 // ============================================
 
 /**
- * Get tenant access token for Feishu API
- */
-async function getTenantAccessToken(): Promise<string> {
-  // Check if token is still valid (with 5 min buffer)
-  if (tenantAccessToken && Date.now() < tokenExpiresAt - 5 * 60 * 1000) {
-    return tenantAccessToken;
-  }
-
-  const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      app_id: FEISHU_APP_ID,
-      app_secret: FEISHU_APP_SECRET,
-    }),
-  });
-
-  const result = await response.json();
-
-  if (result.code !== 0) {
-    throw new Error(`Failed to get tenant access token: ${result.msg}`);
-  }
-
-  tenantAccessToken = result.tenant_access_token;
-  tokenExpiresAt = Date.now() + result.expire * 1000;
-
-  console.log('[Feishu] Tenant access token refreshed : ', tenantAccessToken);
-  return tenantAccessToken!;
-}
-
-/**
- * Check if Feishu is configured
+ * Check if Feishu webhook is configured
  */
 export function isFeishuConfigured(): boolean {
-  return !!(FEISHU_APP_ID && FEISHU_APP_SECRET);
-}
-
-// ============================================
-// User/Friend Management
-// ============================================
-
-export interface FeishuUser {
-  user_id: string;
-  open_id: string;
-  name: string;
-  avatar_url?: string;
-  department?: string;
+  return !!FEISHU_WEBHOOK_URL;
 }
 
 /**
- * Search users by keyword
+ * Get webhook status for frontend
  */
-export async function searchUsers(keyword: string): Promise<FeishuUser[]> {
-  const token = await getTenantAccessToken();
-
-  const response = await fetch(`https://open.feishu.cn/open-apis/search/v1/user?query=${encodeURIComponent(keyword)}&page_size=20`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const result = await response.json();
-
-  if (result.code !== 0) {
-    console.error('[Feishu] Search users failed:', result.msg);
-    return [];
-  }
-
-  return (result.data?.users || []).map((user: any) => ({
-    user_id: user.user_id,
-    open_id: user.open_id,
-    name: user.name,
-    avatar_url: user.avatar?.avatar_72,
-    department: user.department_ids?.[0],
-  }));
-}
-
-/**
- * Get frequently contacted users (recent contacts)
- */
-export async function getRecentContacts(): Promise<FeishuUser[]> {
-  // Note: This API might require specific permissions
-  // Fallback to returning empty array if not available
-  try {
-    const token = await getTenantAccessToken();
-
-    // Get department users as fallback
-    const response = await fetch('https://open.feishu.cn/open-apis/contact/v3/users?page_size=50', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const result = await response.json();
-
-    if (result.code !== 0) {
-      console.warn('[Feishu] Get contacts failed:', result.msg);
-      return [];
-    }
-
-    return (result.data?.items || []).map((user: any) => ({
-      user_id: user.user_id,
-      open_id: user.open_id,
-      name: user.name,
-      avatar_url: user.avatar?.avatar_72,
-      department: user.department_ids?.[0],
-    }));
-  } catch (error) {
-    console.error('[Feishu] Get recent contacts error:', error);
-    return [];
-  }
+export function getWebhookStatus(): {
+  configured: boolean;
+  webhookUrl: string | null;
+} {
+  return {
+    configured: isFeishuConfigured(),
+    webhookUrl: FEISHU_WEBHOOK_URL ? '***configured***' : null,
+  };
 }
 
 // ============================================
@@ -161,7 +60,7 @@ function getSentimentEmoji(sentiment: Sentiment): string {
 }
 
 /**
- * Build interactive card message for feedback
+ * Build interactive card message for feedback (webhook format)
  */
 export function buildFeedbackCard(feedback: FeedbackItem, shareMessage?: string): object {
   const sentimentColor = getSentimentColor(feedback.sentiment);
@@ -213,7 +112,21 @@ export function buildFeedbackCard(feedback: FeedbackItem, shareMessage?: string)
             is_short: true,
             text: {
               tag: 'lark_md',
+              content: `**用户ID**: ${feedback.userId}`,
+            },
+          },
+          {
+            is_short: true,
+            text: {
+              tag: 'lark_md',
               content: `**时间**: ${date}`,
+            },
+          },
+          {
+            is_short: true,
+            text: {
+              tag: 'lark_md',
+              content: `**版本**: ${feedback.appVersion || '未知'}`,
             },
           },
         ],
@@ -226,13 +139,12 @@ export function buildFeedbackCard(feedback: FeedbackItem, shareMessage?: string)
           content: `**反馈内容**:\n${feedback.content}`,
         },
       },
-      // Image (if exists)
+      // Image link (if exists) - use markdown link since webhook doesn't support external images directly
       ...(feedback.imageUrl ? [{
-        tag: 'img',
-        img_key: feedback.imageUrl,
-        alt: {
-          tag: 'plain_text',
-          content: '反馈图片',
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `**附件图片**: [点击查看图片](${feedback.imageUrl})`,
         },
       }] : []),
       {
@@ -288,7 +200,7 @@ export function buildFeedbackCard(feedback: FeedbackItem, shareMessage?: string)
           content: `**AI 摘要**: ${feedback.aiSummary}`,
         },
       }] : []),
-      // Footer with action
+      // Footer
       {
         tag: 'hr',
       },
@@ -308,87 +220,60 @@ export function buildFeedbackCard(feedback: FeedbackItem, shareMessage?: string)
 }
 
 // ============================================
-// Send Message
+// Send Message via Webhook
 // ============================================
 
 export interface SendMessageResult {
   success: boolean;
-  message_id?: string;
   error?: string;
 }
 
 /**
- * Send card message to a user
+ * Send card message via Feishu webhook
  */
-export async function sendCardMessage(
-  receiverId: string,
-  receiverIdType: 'open_id' | 'user_id' | 'email' = 'open_id',
-  card: object
+export async function sendViaWebhook(
+  feedback: FeedbackItem,
+  shareMessage?: string
 ): Promise<SendMessageResult> {
-  try {
-    const token = await getTenantAccessToken();
+  if (!FEISHU_WEBHOOK_URL) {
+    return {
+      success: false,
+      error: 'Feishu webhook URL not configured. Please set FEISHU_WEBHOOK_URL environment variable.',
+    };
+  }
 
-    const response = await fetch(`https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receiverIdType}`, {
+  try {
+    const card = buildFeedbackCard(feedback, shareMessage);
+
+    const response = await fetch(FEISHU_WEBHOOK_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        receive_id: receiverId,
         msg_type: 'interactive',
-        content: JSON.stringify(card),
+        card,
       }),
     });
 
     const result = await response.json();
 
-    if (result.code !== 0) {
-      console.error('[Feishu] Send message failed:', result.msg);
+    // Feishu webhook returns { code: 0 } on success
+    if (result.code !== 0 && result.StatusCode !== 0) {
+      console.error('[Feishu Webhook] Send failed:', result);
       return {
         success: false,
-        error: result.msg || 'Failed to send message',
+        error: result.msg || result.StatusMessage || 'Failed to send message',
       };
     }
 
-    console.log(`[Feishu] Message sent successfully to ${receiverId}`);
-    return {
-      success: true,
-      message_id: result.data?.message_id,
-    };
+    console.log('[Feishu Webhook] Message sent successfully');
+    return { success: true };
   } catch (error) {
-    console.error('[Feishu] Send message error:', error);
+    console.error('[Feishu Webhook] Error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-}
-
-/**
- * Share feedback to multiple users
- */
-export async function shareFeedback(
-  feedback: FeedbackItem,
-  receiverIds: string[],
-  receiverIdType: 'open_id' | 'user_id' | 'email' = 'open_id',
-  shareMessage?: string
-): Promise<{ success: number; failed: number; results: SendMessageResult[] }> {
-  const card = buildFeedbackCard(feedback, shareMessage);
-  const results: SendMessageResult[] = [];
-
-  // Send to all receivers in parallel (max 5 concurrent)
-  const concurrency = 5;
-  for (let i = 0; i < receiverIds.length; i += concurrency) {
-    const batch = receiverIds.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map(id => sendCardMessage(id, receiverIdType, card))
-    );
-    results.push(...batchResults);
-  }
-
-  const success = results.filter(r => r.success).length;
-  const failed = results.filter(r => !r.success).length;
-
-  return { success, failed, results };
 }

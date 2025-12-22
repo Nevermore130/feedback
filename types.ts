@@ -41,6 +41,7 @@ export interface FeedbackItem {
   momentsText?: string;
   userType?: string;
   contentType?: number; // 1: 社区审核, 0: 产品功能
+  appVersion?: string; // App version when feedback was submitted
 }
 
 export interface AnalysisResult {

@@ -38,12 +38,9 @@ export interface FeedbackFilters {
   tags?: string[];
 }
 
-export interface FeishuUser {
-  user_id: string;
-  open_id: string;
-  name: string;
-  avatar_url?: string;
-  department?: string;
+export interface FeishuStatus {
+  configured: boolean;
+  webhookUrl: string | null;
 }
 
 export interface TagInfo {
@@ -211,56 +208,33 @@ export const feedbackApi = {
     return result.data;
   },
 
-  // Check Feishu configuration status
-  async getFeishuStatus(): Promise<{ configured: boolean }> {
+  // Check Feishu webhook configuration status
+  async getFeishuStatus(): Promise<FeishuStatus> {
     const response = await fetch(`${API_BASE}/feedback/feishu/status`);
-    const result: ApiResponse<{ configured: boolean }> = await response.json();
+    const result: ApiResponse<FeishuStatus> = await response.json();
     if (!result.success) {
       throw new Error(result.error || 'Failed to get Feishu status');
     }
     return result.data;
   },
 
-  // Search Feishu users
-  async searchFeishuUsers(keyword: string): Promise<FeishuUser[]> {
-    const response = await fetch(`${API_BASE}/feedback/feishu/users/search?keyword=${encodeURIComponent(keyword)}`);
-    const result: ApiResponse<FeishuUser[]> = await response.json();
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to search users');
-    }
-    return result.data;
-  },
-
-  // Get recent Feishu contacts
-  async getRecentFeishuContacts(): Promise<FeishuUser[]> {
-    const response = await fetch(`${API_BASE}/feedback/feishu/users/recent`);
-    const result: ApiResponse<FeishuUser[]> = await response.json();
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to get recent contacts');
-    }
-    return result.data;
-  },
-
-  // Share feedback to Feishu users
+  // Share feedback via Feishu webhook
   async shareFeedback(
     feedbackId: string,
-    receiverIds: string[],
     shareMessage?: string,
     dateRange?: DateRange
-  ): Promise<{ sent: number; failed: number }> {
+  ): Promise<{ sent: boolean }> {
     const response = await fetch(`${API_BASE}/feedback/share`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         feedbackId,
-        receiverIds,
-        receiverIdType: 'open_id',
         shareMessage,
         from: dateRange?.from,
         to: dateRange?.to,
       }),
     });
-    const result: ApiResponse<{ sent: number; failed: number }> = await response.json();
+    const result: ApiResponse<{ sent: boolean }> = await response.json();
     if (!result.success) {
       throw new Error(result.error || 'Failed to share feedback');
     }
