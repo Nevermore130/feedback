@@ -89,6 +89,30 @@ interface Translations {
   chatIssue: string;
   crashIssue: string;
   otherIssue: string;
+
+  // Tags Filter
+  allTags: string;
+  filterByTags: string;
+  clearTags: string;
+  tagsSelected: string;
+  tagCloud: string;
+
+  // Share
+  share: string;
+  shareToFeishu: string;
+  searchUser: string;
+  searchUserPlaceholder: string;
+  recentContacts: string;
+  selectedUsers: string;
+  shareMessage: string;
+  shareMessagePlaceholder: string;
+  send: string;
+  cancel: string;
+  sending: string;
+  shareSuccess: string;
+  shareFailed: string;
+  noUsersSelected: string;
+  feishuNotConfigured: string;
 }
 
 const translations: Record<Language, Translations> = {
@@ -171,7 +195,7 @@ const translations: Record<Language, Translations> = {
     feedbackCount: '反馈数量',
     dailyFeedbackTrend: '每日反馈趋势',
     peakDay: '峰值',
-    issueTypeTrend: '问题类型反馈趋势',
+    issueTypeTrend: '问题反馈数量',
     byWeek: '按周',
     byMonth: '按月',
     adIssue: '广告',
@@ -179,6 +203,30 @@ const translations: Record<Language, Translations> = {
     chatIssue: '聊天',
     crashIssue: '闪退',
     otherIssue: '其他',
+
+    // Tags Filter
+    allTags: '全部标签',
+    filterByTags: '按标签筛选',
+    clearTags: '清除标签',
+    tagsSelected: '个标签已选',
+    tagCloud: '标签词云',
+
+    // Share
+    share: '分享',
+    shareToFeishu: '分享到飞书',
+    searchUser: '搜索用户',
+    searchUserPlaceholder: '输入用户名搜索...',
+    recentContacts: '最近联系人',
+    selectedUsers: '已选用户',
+    shareMessage: '分享留言',
+    shareMessagePlaceholder: '添加一条留言（可选）...',
+    send: '发送',
+    cancel: '取消',
+    sending: '发送中...',
+    shareSuccess: '分享成功',
+    shareFailed: '分享失败',
+    noUsersSelected: '请选择至少一个用户',
+    feishuNotConfigured: '飞书未配置',
   },
   en: {
     // Common
@@ -259,7 +307,7 @@ const translations: Record<Language, Translations> = {
     feedbackCount: 'Feedback Count',
     dailyFeedbackTrend: 'Daily Feedback Trend',
     peakDay: 'Peak',
-    issueTypeTrend: 'Issue Type Feedback Trend',
+    issueTypeTrend: 'Issue Feedback Count',
     byWeek: 'By Week',
     byMonth: 'By Month',
     adIssue: 'Ads',
@@ -267,6 +315,30 @@ const translations: Record<Language, Translations> = {
     chatIssue: 'Chat',
     crashIssue: 'Crash',
     otherIssue: 'Other',
+
+    // Tags Filter
+    allTags: 'All Tags',
+    filterByTags: 'Filter by Tags',
+    clearTags: 'Clear Tags',
+    tagsSelected: 'tags selected',
+    tagCloud: 'Tag Cloud',
+
+    // Share
+    share: 'Share',
+    shareToFeishu: 'Share to Feishu',
+    searchUser: 'Search User',
+    searchUserPlaceholder: 'Type to search users...',
+    recentContacts: 'Recent Contacts',
+    selectedUsers: 'Selected Users',
+    shareMessage: 'Message',
+    shareMessagePlaceholder: 'Add a message (optional)...',
+    send: 'Send',
+    cancel: 'Cancel',
+    sending: 'Sending...',
+    shareSuccess: 'Shared successfully',
+    shareFailed: 'Failed to share',
+    noUsersSelected: 'Please select at least one user',
+    feishuNotConfigured: 'Feishu not configured',
   },
 };
 

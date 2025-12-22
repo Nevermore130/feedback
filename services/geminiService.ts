@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, Category, Sentiment } from "../types";
 
-const apiKey = process.env.API_KEY || '';
+const apiKey = process.env.GOOGLE_API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
 export const analyzeFeedbackWithGemini = async (feedbackText: string): Promise<AnalysisResult> => {

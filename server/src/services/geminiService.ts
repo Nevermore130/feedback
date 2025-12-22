@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Sentiment } from "../types.js";
 
-const apiKey = process.env.API_KEY || 'AIzaSyA0M-OCIsvB_-HoZk3O7YUh2rts8lT-wrU';
+const apiKey = process.env.GOOGLE_API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
 export interface AnalysisResult {

@@ -33,7 +33,14 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'feedback' | 'settings'>('dashboard');
   const [isVisible, setIsVisible] = useState(false);
   const [currentDateRange, setCurrentDateRange] = useState(getDefaultDateRange());
+  const [initialTag, setInitialTag] = useState<string | undefined>(undefined);
   const { language, setLanguage, t } = useI18n();
+
+  // Handle tag click from Dashboard - navigate to feedback list with tag filter
+  const handleTagClick = (tag: string) => {
+    setInitialTag(tag);
+    setActiveTab('feedback');
+  };
 
   const handleDateRangeChange = (from: string, to: string) => {
     setCurrentDateRange({ from, to });
@@ -47,9 +54,16 @@ const AppContent: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard dateRange={currentDateRange} />;
+        return <Dashboard dateRange={currentDateRange} onTagClick={handleTagClick} />;
       case 'feedback':
-        return <FeedbackList onDateRangeChange={handleDateRangeChange} currentDateRange={currentDateRange} />;
+        return (
+          <FeedbackList
+            onDateRangeChange={handleDateRangeChange}
+            currentDateRange={currentDateRange}
+            initialTag={initialTag}
+            onInitialTagConsumed={() => setInitialTag(undefined)}
+          />
+        );
       case 'settings':
         return (
           <div className="flex items-center justify-center h-96 bg-white rounded-2xl border border-dashed border-slate-300">

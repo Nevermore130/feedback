@@ -4,6 +4,7 @@ import { FeedbackItem, FeishuApiResponse, FeishuFeedbackItem, Category, Sentimen
 import { transformFeishuList, transformFeishuListWithAI } from '../utils/transformer.js';
 import { getCacheStats as getAICacheStats } from '../services/geminiService.js';
 import * as supabase from '../services/supabaseService.js';
+import * as feishu from '../services/feishuService.js';
 
 const router = Router();
 
@@ -302,7 +303,7 @@ async function fetchFromFeishu(from: string, to: string, withAI: boolean = true)
 // GET /api/feedback - Get feedback with pagination
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { from, to, page, pageSize, category, sentiment, search, contentType, ai } = req.query;
+    const { from, to, page, pageSize, category, sentiment, search, contentType, tags, ai } = req.query;
     const dateRange = {
       from: (from as string) || getDefaultDateRange().from,
       to: (to as string) || getDefaultDateRange().to,
@@ -331,6 +332,15 @@ router.get('/', async (req: Request, res: Response) => {
         f.content.toLowerCase().includes(searchLower) ||
         f.userName.toLowerCase().includes(searchLower)
       );
+    }
+    // Filter by tags (match any of the selected tags)
+    if (tags && typeof tags === 'string' && tags.trim()) {
+      const tagList = tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+      if (tagList.length > 0) {
+        allFeedback = allFeedback.filter(f =>
+          f.tags && f.tags.some(tag => tagList.includes(tag.toLowerCase()))
+        );
+      }
     }
 
     // Pagination
@@ -464,6 +474,20 @@ router.get('/summary', async (req: Request, res: Response) => {
       ? Math.round(((promoters - detractors) / totalFeedback) * 100)
       : 0;
 
+    // Tag cloud data - collect all tags with counts
+    const tagCounts: Record<string, number> = {};
+    allFeedback.forEach(f => {
+      if (f.tags && Array.isArray(f.tags)) {
+        f.tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      }
+    });
+    const tagCloud = Object.entries(tagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 50); // Limit to top 50 tags for word cloud
+
     res.json({
       success: true,
       data: {
@@ -477,6 +501,7 @@ router.get('/summary', async (req: Request, res: Response) => {
         issueTypeMonthData,
         adTrendData,
         recentFeedback,
+        tagCloud,
       },
       dateRange,
     });
@@ -494,6 +519,45 @@ router.get('/team/members', (_req: Request, res: Response) => {
     success: true,
     data: TEAM_MEMBERS,
   });
+});
+
+// GET /api/feedback/tags/all - Get all unique tags
+router.get('/tags/all', async (req: Request, res: Response) => {
+  try {
+    const { from, to } = req.query;
+    const dateRange = {
+      from: (from as string) || getDefaultDateRange().from,
+      to: (to as string) || getDefaultDateRange().to,
+    };
+
+    const allFeedback = await fetchFromFeishu(dateRange.from, dateRange.to);
+
+    // Collect all unique tags with their counts
+    const tagCounts: Record<string, number> = {};
+    allFeedback.forEach(f => {
+      if (f.tags && Array.isArray(f.tags)) {
+        f.tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      }
+    });
+
+    // Convert to sorted array (by count, descending)
+    const tags = Object.entries(tagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      success: true,
+      data: tags,
+      dateRange,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch tags',
+    });
+  }
 });
 
 // GET /api/feedback/:id - Get single feedback by ID
@@ -551,6 +615,72 @@ router.post('/refresh', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Force refresh feedback from source API (bypasses all caches)
+ * Used by scheduled task
+ */
+export async function forceRefreshFeedback(from: string, to: string): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    console.log(`[Scheduled Refresh] Starting force refresh for ${from} to ${to}...`);
+
+    // Clear memory cache for this date range
+    feedbackCache.clear();
+
+    // Split date range and fetch directly from Feishu API
+    const dateChunks = splitDateRange(from, to, 3);
+    console.log(`[Scheduled Refresh] Fetching ${dateChunks.length} date chunks...`);
+
+    const allRawData: FeishuFeedbackItem[] = [];
+    const concurrency = 5;
+
+    for (let i = 0; i < dateChunks.length; i += concurrency) {
+      const batch = dateChunks.slice(i, i + concurrency);
+      const batchResults = await Promise.all(
+        batch.map(chunk => fetchSingleRange(chunk.from, chunk.to))
+      );
+
+      for (const data of batchResults) {
+        allRawData.push(...data);
+      }
+    }
+
+    // Deduplicate by ID
+    const uniqueMap = new Map<number, FeishuFeedbackItem>();
+    for (const item of allRawData) {
+      uniqueMap.set(item.id, item);
+    }
+    const uniqueRawData = Array.from(uniqueMap.values());
+    console.log(`[Scheduled Refresh] Fetched ${uniqueRawData.length} unique items from API`);
+
+    // Transform with AI analysis
+    console.log(`[Scheduled Refresh] Starting AI analysis...`);
+    const feedbackList = await transformFeishuListWithAI(uniqueRawData, {
+      chunkSize: 50,
+      concurrency: 10,
+    });
+
+    // Sort by date descending
+    feedbackList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Persist to Supabase
+    if (supabase.isSupabaseConfigured() && feedbackList.length > 0) {
+      const { success, failed } = await supabase.upsertFeedback(feedbackList);
+      console.log(`[Scheduled Refresh] Persisted to Supabase: ${success} success, ${failed} failed`);
+    }
+
+    // Update memory cache
+    const cacheKey = `${from}-${to}`;
+    feedbackCache.set(cacheKey, feedbackList, true);
+
+    console.log(`[Scheduled Refresh] Completed! Refreshed ${feedbackList.length} items`);
+    return { success: true, count: feedbackList.length };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Scheduled Refresh] Failed:`, errorMsg);
+    return { success: false, count: 0, error: errorMsg };
+  }
+}
+
 // GET /api/feedback/cache/stats - Get cache statistics
 router.get('/cache/stats', async (_req: Request, res: Response) => {
   try {
@@ -578,6 +708,146 @@ router.get('/cache/stats', async (_req: Request, res: Response) => {
       },
     });
   }
+});
+
+// ============================================
+// Feishu Share Routes
+// ============================================
+
+// GET /api/feedback/feishu/users/search - Search Feishu users
+router.get('/feishu/users/search', async (req: Request, res: Response) => {
+  try {
+    if (!feishu.isFeishuConfigured()) {
+      res.status(503).json({
+        success: false,
+        error: 'Feishu API is not configured. Please set FEISHU_APP_ID and FEISHU_APP_SECRET.',
+      });
+      return;
+    }
+
+    const { keyword } = req.query;
+    if (!keyword || typeof keyword !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Search keyword is required',
+      });
+      return;
+    }
+
+    const users = await feishu.searchUsers(keyword);
+    res.json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to search users',
+    });
+  }
+});
+
+// GET /api/feedback/feishu/users/recent - Get recent contacts
+router.get('/feishu/users/recent', async (_req: Request, res: Response) => {
+  try {
+    if (!feishu.isFeishuConfigured()) {
+      res.status(503).json({
+        success: false,
+        error: 'Feishu API is not configured',
+      });
+      return;
+    }
+
+    const users = await feishu.getRecentContacts();
+    res.json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get recent contacts',
+    });
+  }
+});
+
+// POST /api/feedback/share - Share feedback to Feishu users
+router.post('/share', async (req: Request, res: Response) => {
+  try {
+    if (!feishu.isFeishuConfigured()) {
+      res.status(503).json({
+        success: false,
+        error: 'Feishu API is not configured. Please set FEISHU_APP_ID and FEISHU_APP_SECRET.',
+      });
+      return;
+    }
+
+    const { feedbackId, receiverIds, receiverIdType, shareMessage, from, to } = req.body;
+
+    if (!feedbackId) {
+      res.status(400).json({
+        success: false,
+        error: 'feedbackId is required',
+      });
+      return;
+    }
+
+    if (!receiverIds || !Array.isArray(receiverIds) || receiverIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'receiverIds must be a non-empty array',
+      });
+      return;
+    }
+
+    // Get the feedback item
+    const dateRange = {
+      from: from || getDefaultDateRange().from,
+      to: to || getDefaultDateRange().to,
+    };
+    const allFeedback = await fetchFromFeishu(dateRange.from, dateRange.to);
+    const feedback = allFeedback.find(f => f.id === feedbackId);
+
+    if (!feedback) {
+      res.status(404).json({
+        success: false,
+        error: 'Feedback not found',
+      });
+      return;
+    }
+
+    // Share to all receivers
+    const result = await feishu.shareFeedback(
+      feedback,
+      receiverIds,
+      receiverIdType || 'open_id',
+      shareMessage
+    );
+
+    res.json({
+      success: true,
+      data: {
+        sent: result.success,
+        failed: result.failed,
+        details: result.results,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to share feedback',
+    });
+  }
+});
+
+// GET /api/feedback/feishu/status - Check Feishu configuration status
+router.get('/feishu/status', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      configured: feishu.isFeishuConfigured(),
+    },
+  });
 });
 
 export default router;

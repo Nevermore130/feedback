@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
 import { Sentiment } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { TrendingUp, Users, MessageCircle, Star } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useDashboardSummary } from '../hooks/useFeedback';
 import { DateRange } from '../services/api';
-
-// Colors for each issue type
-const ISSUE_TYPE_COLORS = {
-  ad: '#f59e0b',      // amber
-  review: '#8b5cf6',  // purple
-  chat: '#06b6d4',    // cyan
-  crash: '#ef4444',   // red
-  other: '#64748b',   // slate
-};
+import { TagCloud } from './TagCloud';
 
 interface DashboardProps {
   dateRange?: DateRange;
+  onTagClick?: (tag: string) => void;
 }
 
 const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#64748b'];
@@ -29,7 +22,7 @@ const SENTIMENT_COLORS = {
 
 type TimeRange = 'week' | 'month';
 
-export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dateRange, onTagClick }) => {
   const { t } = useI18n();
   const [issueTypeTimeRange, setIssueTypeTimeRange] = useState<TimeRange>('week');
 
@@ -93,17 +86,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
     count: d.count
   }));
 
-  // Format issue type trend data
+  // Format issue type trend data - sum all types into total count
   const issueTypeWeekData = summary.issueTypeWeekData.map(d => ({
     period: d.period.slice(5), // Remove year prefix
     fullPeriod: d.period,
-    ...d
+    count: d.ad + d.review + d.chat + d.crash + d.other,
   }));
 
   const issueTypeMonthData = summary.issueTypeMonthData.map(d => ({
     period: d.period.slice(5), // Remove year prefix
     fullPeriod: d.period,
-    ...d
+    count: d.ad + d.review + d.chat + d.crash + d.other,
   }));
 
   return (
@@ -319,6 +312,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
         </div>
       </div>
 
+      {/* Tag Cloud */}
+      {summary.tagCloud && summary.tagCloud.length > 0 && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-bold text-slate-900 mb-6">{t.tagCloud}</h3>
+          <TagCloud
+            tags={summary.tagCloud}
+            onTagClick={onTagClick}
+            maxTags={30}
+          />
+        </div>
+      )}
+
       {/* Issue Type Feedback Trend Chart */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-6">
@@ -346,7 +351,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
             </button>
           </div>
         </div>
-        <div className="h-80 w-full">
+        <div className="h-72 w-full">
           {(issueTypeTimeRange === 'week' ? issueTypeWeekData : issueTypeMonthData).length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -375,25 +380,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dateRange }) => {
                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                     backgroundColor: '#fff'
                   }}
+                  formatter={(value: number) => [value, t.feedbackCount]}
                 />
-                <Legend
-                  wrapperStyle={{ paddingTop: '20px' }}
-                  formatter={(value) => {
-                    const labelMap: Record<string, string> = {
-                      ad: t.adIssue,
-                      review: t.reviewIssue,
-                      chat: t.chatIssue,
-                      crash: t.crashIssue,
-                      other: t.otherIssue,
-                    };
-                    return <span className="text-sm text-slate-600">{labelMap[value] || value}</span>;
-                  }}
-                />
-                <Bar dataKey="ad" name="ad" stackId="a" fill={ISSUE_TYPE_COLORS.ad} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="review" name="review" stackId="a" fill={ISSUE_TYPE_COLORS.review} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="chat" name="chat" stackId="a" fill={ISSUE_TYPE_COLORS.chat} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="crash" name="crash" stackId="a" fill={ISSUE_TYPE_COLORS.crash} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="other" name="other" stackId="a" fill={ISSUE_TYPE_COLORS.other} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
