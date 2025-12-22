@@ -9,7 +9,10 @@
     "dev:server": "cd server && npm run dev",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:vercel": "vite build",
+    "preview": "vite preview",
+    "deploy": "vercel",
+    "deploy:prod": "vercel --prod"
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
@@ -22,7 +25,9 @@
     "recharts": "^3.5.1"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.89.0",
     "@types/node": "^22.14.0",
+    "@vercel/node": "^3.2.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/react-window": "^1.8.8",
